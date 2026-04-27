@@ -7,62 +7,69 @@ type Status string
 
 const (
 	StatusMatch    Status = "match"
+	StatusMissing  Status = "missing"
 	StatusMismatch Status = "mismatch"
-	StatusMissing  Status = "missing" // present in base, absent in target
-	StatusExtra    Status = "extra"   // absent in base, present in target
 )
 
-// Result holds the comparison result for a single environment key.
+// Result holds the comparison result for one key in one file.
 type Result struct {
-	Key        string `json:"key"`
-	Status     Status `json:"status"`
-	BaseValue  string `json:"base_value,omitempty"`
-	OtherValue string `json:"other_value,omitempty"`
+	Key      string
+	File     string
+	Status   Status
+	BaseVal  string
+	OtherVal string
 }
 
-// Compare compares two parsed env maps and returns a sorted list of Results.
-func Compare(base, target map[string]string) []Result {
+// Compare compares a base env map against one or more target env maps.
+// Each target is identified by its filename key in the targets map.
+func Compare(base map[string]string, targets map[string]map[string]string) []Result {
 	var results []Result
 
-	for key, baseVal := range base {
-		if targetVal, ok := target[key]; !ok {
-			results = append(results, Result{
-				Key:       key,
-				Status:    StatusMissing,
-				BaseValue: baseVal,
-			})
-		} else if hasMismatch(baseVal, targetVal) {
-			results = append(results, Result{
-				Key:        key,
-				Status:     StatusMismatch,
-				BaseValue:  baseVal,
-				OtherValue: targetVal,
-			})
-		} else {
-			results = append(results, Result{
-				Key:    key,
-				Status: StatusMatch,
-			})
+	keys := make([]string, 0, len(base))
+	for k := range base {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, file := range sortedKeys(targets) {
+		target := targets[file]
+		for _, key := range keys {
+			baseVal := base[key]
+			otherVal, exists := target[key]
+			switch {
+			case !exists:
+				results = append(results, Result{
+					Key: key, File: file,
+					Status: StatusMissing,
+					BaseVal: baseVal,
+				})
+			case hasMismatch(baseVal, otherVal):
+				results = append(results, Result{
+					Key: key, File: file,
+					Status: StatusMismatch,
+					BaseVal: baseVal, OtherVal: otherVal,
+				})
+			default:
+				results = append(results, Result{
+					Key: key, File: file,
+					Status: StatusMatch,
+					BaseVal: baseVal, OtherVal: otherVal,
+				})
+			}
 		}
 	}
-
-	for key, targetVal := range target {
-		if _, ok := base[key]; !ok {
-			results = append(results, Result{
-				Key:        key,
-				Status:     StatusExtra,
-				OtherValue: targetVal,
-			})
-		}
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Key < results[j].Key
-	})
-
 	return results
 }
 
 func hasMismatch(a, b string) bool {
 	return a != b
+}
+
+func sortedKeys(m map[string]map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
