@@ -1,71 +1,93 @@
 package diff
 
-import "sort"
-
-// KeyStatus represents the comparison status of a key across environments.
-type KeyStatus string
-
-const (
-	StatusMissing   KeyStatus = "missing"   // key exists in reference but not in target
-	StatusExtra     KeyStatus = "extra"     // key exists in target but not in reference
-	StatusMismatch  KeyStatus = "mismatch"  // key exists in both but values differ
-	StatusMatch     KeyStatus = "match"     // key exists in both with identical values
+import (
+	"sort"
 )
 
-// Entry describes the diff result for a single key.
-type Entry struct {
-	Key        string
-	Status     KeyStatus
-	RefValue   string // value from the reference env file
-	TargetValue string // value from the target env file
-}
+// Status represents the type of difference found for a key.
+type Status string
 
-// Result holds the full diff between two env files.
+const (
+	StatusMissing  Status = "missing"
+	StatusExtra    Status = "extra"
+	StatusMismatch Status = "mismatch"
+)
+
+// Result holds the comparison outcome for a single key.
 type Result struct {
-	Reference string  // label / path of the reference file
-	Target    string  // label / path of the target file
-	Entries   []Entry
+	Key    string   `json:"key"`
+	Status Status   `json:"status"`
+	Files  []string `json:"files"`
 }
 
-// Compare compares two parsed env maps and returns a Result.
-// refLabel and targetLabel are used for display purposes (e.g. file paths).
-func Compare(refLabel string, ref map[string]string, targetLabel string, target map[string]string) Result {
-	seen := make(map[string]bool)
-	var entries []Entry
-
-	for k, rv := range ref {
-		seen[k] = true
-		if tv, ok := target[k]; !ok {
-			entries = append(entries, Entry{Key: k, Status: StatusMissing, RefValue: rv})
-		} else if rv != tv {
-			entries = append(entries, Entry{Key: k, Status: StatusMismatch, RefValue: rv, TargetValue: tv})
-		} else {
-			entries = append(entries, Entry{Key: k, Status: StatusMatch, RefValue: rv, TargetValue: tv})
+// Compare takes a map of filename -> key/value pairs and returns a sorted
+// slice of Results describing any missing, extra, or mismatched keys.
+func Compare(envs map[string]map[string]string) []Result {
+	// Collect all unique keys across all files.
+	keySet := map[string]struct{}{}
+	for _, kv := range envs {
+		for k := range kv {
+			keySet[k] = struct{}{}
 		}
 	}
 
-	for k, tv := range target {
-		if !seen[k] {
-			entries = append(entries, Entry{Key: k, Status: StatusExtra, TargetValue: tv})
+	files := make([]string, 0, len(envs))
+	for f := range envs {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+
+	var results []Result
+
+	for key := range keySet {
+		var presentIn []string
+		var missingIn []string
+		values := map[string]string{}
+
+		for _, f := range files {
+			if v, ok := envs[f][key]; ok {
+				presentIn = append(presentIn, f)
+				values[f] = v
+			} else {
+				missingIn = append(missingIn, f)
+			}
+		}
+
+		switch {
+		case len(missingIn) == len(files):
+			// Key exists in no file — shouldn't happen, skip.
+			continue
+		case len(missingIn) > 0 && len(presentIn) == 1:
+			results = append(results, Result{Key: key, Status: StatusExtra, Files: presentIn})
+		case len(missingIn) > 0:
+			results = append(results, Result{Key: key, Status: StatusMissing, Files: missingIn})
+		default:
+			// All files have the key — check for value mismatch.
+			if hasMismatch(values) {
+				results = append(results, Result{Key: key, Status: StatusMismatch, Files: files})
+			}
 		}
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Key < entries[j].Key
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Key < results[j].Key
 	})
 
-	return Result{
-		Reference: refLabel,
-		Target:    targetLabel,
-		Entries:   entries,
-	}
+	return results
 }
 
-// Summary returns counts of each status in the result.
-func (r *Result) Summary() map[KeyStatus]int {
-	counts := map[KeyStatus]int{}
-	for _, e := range r.Entries {
-		counts[e.Status]++
+func hasMismatch(values map[string]string) bool {
+	var first string
+	set := false
+	for _, v := range values {
+		if !set {
+			first = v
+			set = true
+			continue
+		}
+		if v != first {
+			return true
+		}
 	}
-	return counts
+	return false
 }
