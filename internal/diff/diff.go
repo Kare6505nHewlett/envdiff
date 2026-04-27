@@ -1,71 +1,58 @@
 package diff
 
-import (
-	"sort"
-)
+import "sort"
 
-// Status represents the type of difference found for a key.
+// Status represents the comparison outcome for a single key.
 type Status string
 
 const (
-	StatusMissing  Status = "missing"
-	StatusExtra    Status = "extra"
+	StatusMatch    Status = "match"
 	StatusMismatch Status = "mismatch"
+	StatusMissing  Status = "missing" // present in base, absent in target
+	StatusExtra    Status = "extra"   // absent in base, present in target
 )
 
-// Result holds the comparison outcome for a single key.
+// Result holds the comparison result for a single environment key.
 type Result struct {
-	Key    string   `json:"key"`
-	Status Status   `json:"status"`
-	Files  []string `json:"files"`
+	Key        string `json:"key"`
+	Status     Status `json:"status"`
+	BaseValue  string `json:"base_value,omitempty"`
+	OtherValue string `json:"other_value,omitempty"`
 }
 
-// Compare takes a map of filename -> key/value pairs and returns a sorted
-// slice of Results describing any missing, extra, or mismatched keys.
-func Compare(envs map[string]map[string]string) []Result {
-	// Collect all unique keys across all files.
-	keySet := map[string]struct{}{}
-	for _, kv := range envs {
-		for k := range kv {
-			keySet[k] = struct{}{}
-		}
-	}
-
-	files := make([]string, 0, len(envs))
-	for f := range envs {
-		files = append(files, f)
-	}
-	sort.Strings(files)
-
+// Compare compares two parsed env maps and returns a sorted list of Results.
+func Compare(base, target map[string]string) []Result {
 	var results []Result
 
-	for key := range keySet {
-		var presentIn []string
-		var missingIn []string
-		values := map[string]string{}
-
-		for _, f := range files {
-			if v, ok := envs[f][key]; ok {
-				presentIn = append(presentIn, f)
-				values[f] = v
-			} else {
-				missingIn = append(missingIn, f)
-			}
+	for key, baseVal := range base {
+		if targetVal, ok := target[key]; !ok {
+			results = append(results, Result{
+				Key:       key,
+				Status:    StatusMissing,
+				BaseValue: baseVal,
+			})
+		} else if hasMismatch(baseVal, targetVal) {
+			results = append(results, Result{
+				Key:        key,
+				Status:     StatusMismatch,
+				BaseValue:  baseVal,
+				OtherValue: targetVal,
+			})
+		} else {
+			results = append(results, Result{
+				Key:    key,
+				Status: StatusMatch,
+			})
 		}
+	}
 
-		switch {
-		case len(missingIn) == len(files):
-			// Key exists in no file — shouldn't happen, skip.
-			continue
-		case len(missingIn) > 0 && len(presentIn) == 1:
-			results = append(results, Result{Key: key, Status: StatusExtra, Files: presentIn})
-		case len(missingIn) > 0:
-			results = append(results, Result{Key: key, Status: StatusMissing, Files: missingIn})
-		default:
-			// All files have the key — check for value mismatch.
-			if hasMismatch(values) {
-				results = append(results, Result{Key: key, Status: StatusMismatch, Files: files})
-			}
+	for key, targetVal := range target {
+		if _, ok := base[key]; !ok {
+			results = append(results, Result{
+				Key:        key,
+				Status:     StatusExtra,
+				OtherValue: targetVal,
+			})
 		}
 	}
 
@@ -76,18 +63,6 @@ func Compare(envs map[string]map[string]string) []Result {
 	return results
 }
 
-func hasMismatch(values map[string]string) bool {
-	var first string
-	set := false
-	for _, v := range values {
-		if !set {
-			first = v
-			set = true
-			continue
-		}
-		if v != first {
-			return true
-		}
-	}
-	return false
+func hasMismatch(a, b string) bool {
+	return a != b
 }

@@ -1,20 +1,24 @@
-package main
+package main_test
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func writeTempEnv(t *testing.T, content string) string {
 	t.Helper()
-	dir := t.TempDir()
-	p := filepath.Join(dir, ".env")
-	if err := os.WriteFile(p, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write temp env file: %v", err)
+	f, err := os.CreateTemp(t.TempDir(), "*.env")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return p
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	return f.Name()
 }
 
 func buildBinary(t *testing.T) string {
@@ -23,7 +27,7 @@ func buildBinary(t *testing.T) string {
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	cmd.Dir = "."
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %v\n%s", err, out)
+		t.Fatalf("build failed: %s", out)
 	}
 	return bin
 }
@@ -31,44 +35,47 @@ func buildBinary(t *testing.T) string {
 func TestMain_MissingFlags(t *testing.T) {
 	bin := buildBinary(t)
 	cmd := exec.Command(bin)
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected non-zero exit code when flags missing")
+	out, _ := cmd.CombinedOutput()
+	if !strings.Contains(string(out), "--base and --target are required") {
+		t.Fatalf("expected usage error, got: %s", out)
 	}
 }
 
 func TestMain_MatchingFiles(t *testing.T) {
 	bin := buildBinary(t)
-	base := writeTempEnv(t, "KEY=value\nFOO=bar\n")
-	cmp := writeTempEnv(t, "KEY=value\nFOO=bar\n")
-	cmd := exec.Command(bin, "--base", base, "--compare", cmp)
+	base := writeTempEnv(t, "APP=hello\nDB=world\n")
+	target := writeTempEnv(t, "APP=hello\nDB=world\n")
+	cmd := exec.Command(bin, "--base", base, "--target", target)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("expected exit 0 for matching files, got error: %v\noutput: %s", err, out)
+		t.Fatalf("unexpected error: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "match") {
+		t.Fatalf("expected match output, got: %s", out)
 	}
 }
 
 func TestMain_MismatchedFiles(t *testing.T) {
 	bin := buildBinary(t)
-	base := writeTempEnv(t, "KEY=value\nFOO=bar\n")
-	cmp := writeTempEnv(t, "KEY=different\n")
-	cmd := exec.Command(bin, "--base", base, "--compare", cmp)
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected non-zero exit code for mismatched files")
+	base := writeTempEnv(t, "APP=hello\nDB=world\n")
+	target := writeTempEnv(t, "APP=hello\nDB=different\n")
+	cmd := exec.Command(bin, "--base", base, "--target", target)
+	out, _ := cmd.CombinedOutput()
+	if !strings.Contains(string(out), "mismatch") {
+		t.Fatalf("expected mismatch output, got: %s", out)
 	}
 }
 
-func TestMain_JSONFormat(t *testing.T) {
+func TestMain_FilterByPrefix(t *testing.T) {
 	bin := buildBinary(t)
-	base := writeTempEnv(t, "KEY=value\n")
-	cmp := writeTempEnv(t, "KEY=value\n")
-	cmd := exec.Command(bin, "--base", base, "--compare", cmp, "--format", "json")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("unexpected error: %v\noutput: %s", err, out)
+	base := writeTempEnv(t, "APP_NAME=foo\nDB_HOST=localhost\n")
+	target := writeTempEnv(t, "APP_NAME=foo\nDB_HOST=remotehost\n")
+	cmd := exec.Command(bin, "--base", base, "--target", target, "--prefix", "DB_")
+	out, _ := cmd.CombinedOutput()
+	if strings.Contains(string(out), "APP_NAME") {
+		t.Fatalf("APP_NAME should be filtered out, got: %s", out)
 	}
-	if len(out) == 0 {
-		t.Fatal("expected non-empty JSON output")
+	if !strings.Contains(string(out), "DB_HOST") {
+		t.Fatalf("DB_HOST should appear, got: %s", out)
 	}
 }
