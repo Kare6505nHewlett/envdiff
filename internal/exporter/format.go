@@ -15,7 +15,7 @@ func ParseFormat(s string) (Format, error) {
 	case FormatJSON:
 		return FormatJSON, nil
 	default:
-		return "", fmt.Errorf("unknown format %q: supported formats are csv, markdown, json", s)
+		return "", fmt.Errorf("unknown format %q: supported formats are %s", s, strings.Join(SupportedFormats(), ", "))
 	}
 }
 
@@ -26,4 +26,10 @@ func SupportedFormats() []string {
 		string(FormatMarkdown),
 		string(FormatJSON),
 	}
+}
+
+// IsValidFormat reports whether the given string is a recognized export format.
+func IsValidFormat(s string) bool {
+	_, err := ParseFormat(s)
+	return err == nil
 }
