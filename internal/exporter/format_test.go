@@ -32,9 +32,14 @@ func TestParseFormat_Valid(t *testing.T) {
 }
 
 func TestParseFormat_Invalid(t *testing.T) {
-	_, err := exporter.ParseFormat("xml")
-	if err == nil {
-		t.Error("expected error for unsupported format")
+	invalidFormats := []string{"xml", "yaml", "toml", ""}
+	for _, input := range invalidFormats {
+		t.Run(input, func(t *testing.T) {
+			_, err := exporter.ParseFormat(input)
+			if err == nil {
+				t.Errorf("expected error for unsupported format %q", input)
+			}
+		})
 	}
 }
 
