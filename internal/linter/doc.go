@@ -3,7 +3,16 @@
 // environment variable names, keys containing spaces, or values that are
 // suspiciously long.
 //
-// Usage:
+// # Lint Rules
+//
+// The following rules are applied by default:
+//
+//   - Keys must be uppercase (e.g. DATABASE_URL, not database_url)
+//   - Keys must not contain spaces
+//   - Values must not exceed a configurable maximum length
+//   - Keys must not be empty
+//
+// # Usage
 //
 //	opts := linter.DefaultOptions()
 //	findings := linter.Lint("production.env", entries, opts)
