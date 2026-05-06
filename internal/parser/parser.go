@@ -64,6 +64,12 @@ func parseLine(line string) (string, string, error) {
 		return "", "", fmt.Errorf("empty key in line: %q", line)
 	}
 
+	// Keys must not contain spaces or special characters that would be invalid
+	// in a shell environment variable name.
+	if strings.ContainsAny(key, " \t") {
+		return "", "", fmt.Errorf("key contains whitespace in line: %q", line)
+	}
+
 	value := strings.TrimSpace(parts[1])
 	value = stripInlineComment(value)
 	value = unquote(value)
