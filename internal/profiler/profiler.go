@@ -57,6 +57,12 @@ func Compute(results []diff.Result) Profile {
 	return p
 }
 
+// IsHealthy reports whether the profile meets a minimum acceptable threshold,
+// defined as a score of 80 or above (grade B or better).
+func (p Profile) IsHealthy() bool {
+	return p.Score >= 80
+}
+
 func gradeFor(score float64) Grade {
 	switch {
 	case score >= 95:
