@@ -51,6 +51,18 @@ func Apply(results []diff.Result, opts Options) []diff.Result {
 	return out
 }
 
+// IsSensitiveKey reports whether the given key name would be redacted
+// using the provided options. This is useful for callers that need to
+// check sensitivity without running a full Apply pass.
+func IsSensitiveKey(key string, opts Options) bool {
+	patterns := make([]string, len(builtinPatterns))
+	copy(patterns, builtinPatterns)
+	for _, p := range opts.ExtraPatterns {
+		patterns = append(patterns, strings.ToUpper(p))
+	}
+	return isSensitive(key, patterns)
+}
+
 // isSensitive returns true when key contains any of the given patterns.
 func isSensitive(key string, patterns []string) bool {
 	upper := strings.ToUpper(key)
