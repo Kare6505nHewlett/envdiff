@@ -57,6 +57,23 @@ func TestLoad_MissingFile(t *testing.T) {
 	}
 }
 
+func TestSave_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snap.json")
+	results := sampleResults()
+
+	_ = snapshotter.Save(path, "round-trip", results)
+	snap, err := snapshotter.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	for i, r := range snap.Results {
+		if r.Key != results[i].Key || r.Status != results[i].Status || r.File != results[i].File {
+			t.Errorf("result[%d] mismatch: got %+v, want %+v", i, r, results[i])
+		}
+	}
+}
+
 func TestCompare_Added(t *testing.T) {
 	old := snapshotter.Snapshot{Results: sampleResults()[:1]}
 	new := snapshotter.Snapshot{Results: sampleResults()}
