@@ -35,3 +35,18 @@ func TestOptions_CanOverride(t *testing.T) {
 		t.Error("expected Backup to be true after override")
 	}
 }
+
+func TestDefaultOptions_IndependentInstances(t *testing.T) {
+	opts1 := patcher.DefaultOptions()
+	opts2 := patcher.DefaultOptions()
+
+	opts1.DryRun = true
+	opts1.Backup = true
+
+	if opts2.DryRun {
+		t.Error("expected modifying opts1 to not affect opts2 DryRun")
+	}
+	if opts2.Backup {
+		t.Error("expected modifying opts1 to not affect opts2 Backup")
+	}
+}
