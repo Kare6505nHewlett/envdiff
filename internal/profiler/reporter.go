@@ -17,6 +17,9 @@ func ReportText(w io.Writer, p Profile) {
 	fmt.Fprintf(w, "Match   : %d\n", p.MatchCount)
 	fmt.Fprintf(w, "Missing : %d\n", p.MissingCount)
 	fmt.Fprintf(w, "Mismatch: %d\n", p.MismatchCount)
+	if p.Summary != "" {
+		fmt.Fprintf(w, "Summary : %s\n", p.Summary)
+	}
 }
 
 // jsonProfile is the JSON-serialisable shape of a Profile.
